@@ -133,7 +133,8 @@ with TAB3:
     return (r, g, b)
 
 
-    mapdf["color"] = mapdf["score"].apply(lambda s: color_from_score(s))
+    mapdf["color"] = mapdf["score"].apply(color_from_score)
+
 
     layer = pdk.Layer(
         "ScatterplotLayer",
