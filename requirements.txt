@@ -6,6 +6,8 @@ shapely
 pyproj
 folium
 matplotlib
+plotly
+pydeck
+requests
 scikit-learn
 joblib
-requests
