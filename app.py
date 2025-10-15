@@ -117,13 +117,21 @@ with TAB3:
     color = px.colors.sequential.Viridis
     score_min, score_max = float(mapdf["score"].min()), float(mapdf["score"].max())
 
-    def color_from_score(s):
-        if score_max == score_min:
-            t = 0.5
-        else:
-            t = (s - score_min)/(score_max - score_min)
-        idx = int(t * (len(color)-1))
-        return tuple(int(c.strip('rgb() ').split(',')[i]) if isinstance(c, str) else c for i,c in enumerate(color[idx:idx+1][0].strip('rgb()').split(',')))
+    def color_from_score(score: float) -> tuple[int, int, int]:
+    """
+    Convert a numeric score (0–100) to an RGB color gradient.
+    Higher = greener, lower = redder.
+    """
+    # Clamp between 0 and 100
+    s = max(0, min(100, score if pd.notnull(score) else 0))
+    
+    # Calculate RGB gradient (red → yellow → green)
+    r = int(255 * (100 - s) / 100)
+    g = int(255 * s / 100)
+    b = 60  # fixed blue tone for visual contrast
+    
+    return (r, g, b)
+
 
     mapdf["color"] = mapdf["score"].apply(lambda s: color_from_score(s))
 
