@@ -124,16 +124,18 @@ with TAB3:
     """
     # Clamp between 0 and 100
     s = max(0, min(100, score if pd.notnull(score) else 0))
-    
+
     # Calculate RGB gradient (red → yellow → green)
     r = int(255 * (100 - s) / 100)
     g = int(255 * s / 100)
     b = 60  # fixed blue tone for visual contrast
-    
+
     return (r, g, b)
 
 
-    mapdf["color"] = mapdf["score"].apply(color_from_score)
+# Apply colors to each row based on score
+mapdf["color"] = mapdf["score"].apply(color_from_score)
+
 
 
     layer = pdk.Layer(
