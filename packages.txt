@@ -2,3 +2,5 @@ proj-bin
 gdal-bin
 libgdal-dev
 libproj-dev
+# Prevent ODBC conflicts
+libspatialindex-dev
