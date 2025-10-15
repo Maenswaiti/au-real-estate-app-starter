@@ -117,24 +117,29 @@ with TAB3:
     color = px.colors.sequential.Viridis
     score_min, score_max = float(mapdf["score"].min()), float(mapdf["score"].max())
 
-    def color_from_score(score: float) -> tuple[int, int, int]:
+    # === Color scale function ===
+def color_from_score(score: float) -> tuple[int, int, int]:
     """
     Convert a numeric score (0–100) to an RGB color gradient.
     Higher = greener, lower = redder.
     """
-    # Clamp between 0 and 100
-    s = max(0, min(100, score if pd.notnull(score) else 0))
+    # Clamp the score between 0 and 100
+    if pd.isnull(score):
+        s = 0
+    else:
+        s = max(0, min(100, score))
 
-    # Calculate RGB gradient (red → yellow → green)
+    # Red → Yellow → Green gradient
     r = int(255 * (100 - s) / 100)
     g = int(255 * s / 100)
-    b = 60  # fixed blue tone for visual contrast
+    b = 60
 
     return (r, g, b)
 
 
-# Apply colors to each row based on score
+# Apply color scale
 mapdf["color"] = mapdf["score"].apply(color_from_score)
+
 
 
 
