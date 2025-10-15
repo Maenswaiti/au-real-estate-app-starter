@@ -1,8 +1,11 @@
 streamlit
 pandas
-geopandas
-requests
 numpy
-plotly
+geopandas
 shapely
+pyproj
 folium
+matplotlib
+scikit-learn
+joblib
+requests
