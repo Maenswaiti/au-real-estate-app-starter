@@ -3,5 +3,4 @@ libgdal-dev
 libproj-dev
 libspatialindex-dev
 proj-bin
-libodbc1
 
