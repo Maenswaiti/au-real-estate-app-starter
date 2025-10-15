@@ -47,11 +47,18 @@ vac = dl.load_vacancy_sample()
 med = dl.load_vic_medians_sample()
 rba = dl.load_rba_cash_rate_sample()
 
+
+    # Ensure both merge keys have the same type
+geo["SA2_CODE21"] = geo["SA2_CODE21"].astype(str)
+own["sa2_code21"] = own["sa2_code21"].astype(str)
+seifa["sa2_code21"] = seifa["sa2_code21"].astype(str)
+
 features = (
-    geo[["SA2_CODE21","SA2_NAME21","geometry"]]
-    .merge(own[["sa2_code21","ownership_pct"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
-    .merge(seifa[["sa2_code21","irsad_rank"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
+    geo[["SA2_CODE21", "SA2_NAME21", "geometry"]]
+    .merge(own[["sa2_code21", "ownership_pct"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
+    .merge(seifa[["sa2_code21", "irsad_rank"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
 )
+
 
 features["gross_yield"] = features["ownership_pct"].apply(lambda x: 4.0 + (x or 60)/100.0)
 features["vacancy_rate"] = 2.5
