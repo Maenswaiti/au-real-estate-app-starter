@@ -1,0 +1,6 @@
+state,occupancy,bracket_min,bracket_max,base,rate_pct,marginal_above
+NSW,INV,0,14000,0,1.25,0
+NSW,INV,14000,30500,175,1.5,14000
+NSW,INV,30500,100000000,430,5.5,30500
+VIC,OO,0,25000,0,1.4,0
+VIC,OO,25000,1300000,350,6.0,25000
