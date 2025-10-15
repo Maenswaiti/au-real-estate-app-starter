@@ -1,177 +1,146 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import geopandas as gpd
 import pydeck as pdk
 import plotly.express as px
+
 from calculators import (
-    monthly_repayment_pni, assessed_rate_pct, lvr_pct, likely_lmi,
-    gross_yield_pct, net_yield_pct, cash_on_cash_pct, stamp_duty_estimate
+    monthly_repayment_pni,
+    assessed_rate_pct,
+    lvr_pct,
+    likely_lmi,
+    gross_yield_pct,
+    net_yield_pct,
+    cash_on_cash_pct,
+    stamp_duty_estimate
 )
-from scoring import composite_score, DEFAULT_WEIGHTS
 import data_loader as dl
+import scoring as scoring
 
-st.set_page_config(page_title="AU Real-Estate (Public Data)", layout="wide")
+st.set_page_config(page_title="AU Real Estate Dashboard", layout="wide")
 
-st.title("🇦🇺 Australian Real-Estate — Public Data Explorer (No Login)")
-st.caption("Educational tool. Not financial advice. Data from ABS/RBA/state open data. Use your own judgement.")
+st.title("🏠 Australian Real Estate Insights (Public Data Only)")
 
-with st.sidebar:
-    st.header("Global Settings")
-    mode = st.radio("Mode", ["Home Buyer", "Investor"], index=1)
-    interest_rate = st.slider("Interest rate (%)", 1.0, 12.0, 6.5, 0.1)
-    deposit_pct = st.slider("Deposit (%)", 5, 40, 20, 1)
-    term_years = st.slider("Loan term (years)", 10, 30, 30, 1)
+st.markdown("""
+This app combines publicly available data on Australian housing to explore:
+- **Ownership %** per suburb  
+- **Socioeconomic advantage (SEIFA)**  
+- **Vacancy rates & medians**  
+- **Estimated yields, repayments & deposits**
+""")
 
-    st.markdown("---")
-    st.subheader("Scoring Weights")
-    w = DEFAULT_WEIGHTS.copy()
-    w["gross_yield"] = st.slider("Weight: Yield", 0.0, 0.5, w["gross_yield"], 0.01)
-    w["vacancy_rate"] = st.slider("Weight: Vacancy (lower better)", 0.0, 0.5, w["vacancy_rate"], 0.01)
-    w["ownership_pct"] = st.slider("Weight: Ownership %", 0.0, 0.5, w["ownership_pct"], 0.01)
-    default_m = 0.20 if mode == "Home Buyer" else 0.10
-    w["price_momentum_qoq"] = st.slider("Weight: Price momentum (prefer softer)", 0.0, 0.5, default_m, 0.01)
-    w["irsad_rank"] = st.slider("Weight: SEIFA IRSAD", 0.0, 0.5, w["irsad_rank"], 0.01)
-    w["distance_cbd_km"] = st.slider("Weight: Distance to CBD", 0.0, 0.5, w["distance_cbd_km"], 0.01)
+# Sidebar filters
+st.sidebar.header("🔍 Filters")
+state_choice = st.sidebar.selectbox("State", ["VIC", "NSW", "QLD", "SA", "WA", "TAS", "NT", "ACT"], index=0)
+interest_rate = st.sidebar.slider("Mortgage interest rate (%)", 4.5, 10.0, 6.0, 0.1)
+loan_term = st.sidebar.selectbox("Loan term (years)", [25, 30])
+deposit_pct = st.sidebar.slider("Deposit (%)", 5, 40, 20, 1)
 
-TAB1, TAB2, TAB3, TAB4 = st.tabs([
-    "Where to Buy (Ranking)",
-    "Deal Calculator",
-    "Maps",
-    "Data & Methods",
-])
-
+# Load data
 geo = dl.load_sa2_geojson()
 own = dl.load_ownership_sample()
 seifa = dl.load_seifa_sample()
 vac = dl.load_vacancy_sample()
 med = dl.load_vic_medians_sample()
-rba = dl.load_rba_cash_rate_sample()
 
-
-    # Ensure both merge keys have the same type
+# Fix data types before merging
 geo["SA2_CODE21"] = geo["SA2_CODE21"].astype(str)
 own["sa2_code21"] = own["sa2_code21"].astype(str)
 seifa["sa2_code21"] = seifa["sa2_code21"].astype(str)
+vac["postcode"] = vac["postcode"].astype(str)
+med["postcode"] = med["postcode"].astype(str)
 
+# Merge datasets
 features = (
     geo[["SA2_CODE21", "SA2_NAME21", "geometry"]]
     .merge(own[["sa2_code21", "ownership_pct"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
     .merge(seifa[["sa2_code21", "irsad_rank"]], left_on="SA2_CODE21", right_on="sa2_code21", how="left")
 )
 
+# Score and calculate sample metrics
+features["median_price"] = np.random.randint(400000, 1200000, size=len(features))
+features["gross_yield"] = np.random.uniform(3, 6, len(features))
+features["net_yield"] = features["gross_yield"] * 0.85
+features["score"] = scoring.score_suburb(features)
 
-features["gross_yield"] = features["ownership_pct"].apply(lambda x: 4.0 + (x or 60)/100.0)
-features["vacancy_rate"] = 2.5
-features["price_momentum_qoq"] = -1.0
-features["distance_cbd_km"] = 10 + np.random.default_rng(42).normal(0, 5, len(features))
-
-with TAB1:
-    st.subheader("Suburb ranking (sample SA2 subset)")
-    ranked = composite_score(features, weights=w).sort_values("score", ascending=False)
-    st.dataframe(ranked[["SA2_NAME21","gross_yield","vacancy_rate","ownership_pct","price_momentum_qoq","irsad_rank","distance_cbd_km","score"]].round(3), use_container_width=True)
-    st.markdown("### Suggested picks (top 5)")
-    st.write(ranked.head(5)[["SA2_NAME21","score"]])
-
-with TAB2:
-    st.subheader("Deal calculator (per property)")
-    col1, col2 = st.columns(2)
-    with col1:
-        price = st.number_input("Purchase price ($)", 150000.0, 3000000.0, 800000.0, 1000.0)
-        weekly_rent = st.number_input("Weekly rent ($)", 200.0, 2000.0, 700.0, 10.0)
-        expenses = st.number_input("Annual expenses ($)", 0.0, 20000.0, 6000.0, 100.0)
-        state = st.selectbox("State", ["NSW","VIC","QLD","SA","WA","TAS","NT","ACT"]) 
-        occupancy = st.selectbox("Occupancy", ["INV","OO"])  
-        closing_costs = st.number_input("Closing costs ($)", 0.0, 20000.0, 3000.0, 100.0)
-    with col2:
-        deposit_cash = price * (deposit_pct/100)
-        lvr = lvr_pct(price, deposit_cash)
-        lmi_flag = likely_lmi(lvr)
-        stamp_duty = stamp_duty_estimate(price, state, occupancy, "data/stamp_duty_tables.csv")
-        repayment = monthly_repayment_pni(price - deposit_cash, interest_rate, term_years)
-        assessed_rate = assessed_rate_pct(interest_rate)
-
-        gy = gross_yield_pct(price, weekly_rent)
-        ny = net_yield_pct(price, weekly_rent, expenses)
-
-        annual_debt = repayment*12
-        annual_net_cashflow = weekly_rent*52 - expenses - annual_debt
-        coc = cash_on_cash_pct(annual_net_cashflow, deposit_cash, stamp_duty, closing_costs, lmi_cost=0.0)
-
-        st.metric("LVR %", f"{lvr:.1f}%", help=">80% often implies LMI")
-        st.metric("Monthly repayment", f"${repayment:,.0f}")
-        st.metric("Assessed rate (APRA +3%)", f"{assessed_rate:.2f}%")
-        st.metric("Gross yield", f"{gy:.2f}%")
-        st.metric("Net yield", f"{ny:.2f}%")
-        st.metric("Cash-on-cash (Yr1)", f"{coc:.1f}%")
-        st.write(f"**Stamp duty (est.)**: ${stamp_duty:,.0f}  ")
-        if lmi_flag:
-            st.warning("LVR above 80% — many lenders charge LMI. This tool does not compute LMI premiums.")
-
-with TAB3:
-    st.subheader("SA2 heatmap (demo subset)")
-    g = features.dropna(subset=["geometry"]).copy()
-    g = g.to_crs(4326)
-    g["lon"] = g.geometry.centroid.x
-    g["lat"] = g.geometry.centroid.y
-    mapdf = composite_score(g, weights=w)
-    color = px.colors.sequential.Viridis
-    score_min, score_max = float(mapdf["score"].min()), float(mapdf["score"].max())
-
-    # === Color scale function ===
+# === Color scale function ===
 def color_from_score(score: float) -> tuple[int, int, int]:
     """
     Convert a numeric score (0–100) to an RGB color gradient.
     Higher = greener, lower = redder.
     """
-    # Clamp the score between 0 and 100
     if pd.isnull(score):
         s = 0
     else:
         s = max(0, min(100, score))
 
-    # Red → Yellow → Green gradient
     r = int(255 * (100 - s) / 100)
     g = int(255 * s / 100)
     b = 60
-
     return (r, g, b)
 
+# Convert geometry to lat/lon for PyDeck
+features = gpd.GeoDataFrame(features, geometry="geometry")
+features["lon"] = features["geometry"].centroid.x
+features["lat"] = features["geometry"].centroid.y
 
-# Apply color scale
+# Create map dataframe
+mapdf = features.copy()
 mapdf["color"] = mapdf["score"].apply(color_from_score)
 
+# === Map view ===
+st.subheader("🌏 Suburb Investment Heatmap")
+view_state = pdk.ViewState(latitude=-37.81, longitude=144.96, zoom=8)
 
+layer = pdk.Layer(
+    "ScatterplotLayer",
+    data=mapdf,
+    get_position=["lon", "lat"],
+    get_radius=1000,
+    get_fill_color="color",
+    pickable=True,
+)
 
+st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{SA2_NAME21}\nScore: {score}"}))
 
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=mapdf,
-        pickable=True,
-        get_position='[lon, lat]',
-        get_radius=300,
-        get_fill_color='color',
+# === Table + charts ===
+st.subheader("📊 Suburb Comparison")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.dataframe(
+        mapdf[["SA2_NAME21", "ownership_pct", "irsad_rank", "median_price", "gross_yield", "net_yield", "score"]]
+        .sort_values("score", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
     )
-    view_state = pdk.ViewState(latitude=-33.8688, longitude=151.2093, zoom=9)
 
-    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={
-        "text": "{SA2_NAME21}\nScore: {score}\nYield: {gross_yield}%\nVacancy: {vacancy_rate}%\nOwnership: {ownership_pct}%\nIRSAD: {irsad_rank}"
-    }))
+with col2:
+    st.plotly_chart(
+        px.scatter(
+            mapdf,
+            x="ownership_pct",
+            y="gross_yield",
+            color="score",
+            hover_name="SA2_NAME21",
+            title="Ownership vs Gross Yield",
+        ),
+        use_container_width=True,
+    )
 
-with TAB4:
-    st.markdown("""
-**Sources (public only):**
-- ABS Census 2021 — Tenure type (home ownership %) by SA2. CSV snapshot included; replace with the latest ABS/DataPack as you wish.
-- ABS/SEIFA 2021 — IRSAD index by SA2.
-- Vacancy rates — provide a public CSV (e.g., SQM Research free summaries at postcode level) and map to SA2 by postcode->SA2 lookup.
-- State medians — example VIC VPSR CSV included; add NSW/QLD/SAs via their open data portals.
-- RBA — cash rate & lending rates CSVs.
+# === Mortgage calculator ===
+st.subheader("💰 Mortgage Estimator")
 
-**Method:**
-- Compute features per SA2: gross_yield, vacancy_rate, ownership_pct, price_momentum_qoq, irsad_rank, distance_cbd_km.
-- Standardise with z-scores and combine with user-editable weights.
-- Deal calculator uses standard amortisation; shows APRA +3% assessed-rate context.
+price_input = st.number_input("Property price (AUD)", 300000, 2000000, 750000, step=10000)
+deposit = price_input * deposit_pct / 100
+loan_amount = price_input - deposit
+repayment = monthly_repayment_pni(loan_amount, interest_rate, loan_term)
 
-**Disclaimers:**
-- Educational only. Not financial advice. Data may lag (Census 2021, SEIFA 2021).
-- Vacancy samples are demos; replace with fresher public CSVs before using.
-""")
+col3, col4, col5 = st.columns(3)
+col3.metric("Estimated deposit", f"${deposit:,.0f}")
+col4.metric("Loan amount", f"${loan_amount:,.0f}")
+col5.metric("Monthly repayment", f"${repayment:,.0f}")
+
+st.markdown("---")
+st.caption("Data sources: ABS, SQM Research, RBA (public datasets). This is a demo using sample data for illustration only.")
