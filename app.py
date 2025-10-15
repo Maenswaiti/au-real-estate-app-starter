@@ -44,12 +44,17 @@ seifa = dl.load_seifa_sample()
 vac = dl.load_vacancy_sample()
 med = dl.load_vic_medians_sample()
 
-# Fix data types before merging
+# Fix data types before merging (safe version)
 geo["SA2_CODE21"] = geo["SA2_CODE21"].astype(str)
 own["sa2_code21"] = own["sa2_code21"].astype(str)
 seifa["sa2_code21"] = seifa["sa2_code21"].astype(str)
-vac["postcode"] = vac["postcode"].astype(str)
-med["postcode"] = med["postcode"].astype(str)
+
+# Only cast postcode if column exists
+if "postcode" in vac.columns:
+    vac["postcode"] = vac["postcode"].astype(str)
+if "postcode" in med.columns:
+    med["postcode"] = med["postcode"].astype(str)
+
 
 # Merge datasets
 features = (
